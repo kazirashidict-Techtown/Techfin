@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DPDC Mobile Dashboard Offline</title>
+<style>
+body { font-family: Arial,sans-serif; background:#f0f2f5; margin:0; padding:10px; }
+h1 { text-align:center; color:#0a3d62; font-size:1.5em; }
+.card { background:#fff; padding:12px 15px; border-radius:12px; margin-bottom:15px; box-shadow:0 4px 8px rgba(0,0,0,0.1);}
+input, select, button { padding:10px; margin:5px 0; border-radius:8px; border:1px solid #ccc; width:100%; box-sizing:border-box; }
+button { background:#0a3d62; color:#fff; font-weight:bold; cursor:pointer; }
+button.deleteBtn { background:#e74c3c; color:#fff; padding:6px; border:none; border-radius:6px; cursor:pointer; }
+table { width:100%; border-collapse: collapse; margin-top:10px; font-size:14px; }
+th, td { padding:8px; text-align:center; border-bottom:1px solid #ccc; }
+th { background:#0a3d62; color:#fff; font-size:13px; }
+td.editable { background:#e0f7fa; cursor:pointer; }
+.summary-card { margin:5px 0; text-align:center; padding:12px; border-radius:12px; color:#fff; font-weight:bold; }
+.electricity { background:#ff6b6b; }
+.airwifi { background:#4ecdc4; }
+.other { background:#ffa502; }
+.overall { background:#f7b731; color:#000; }
+canvas { max-width:100%; height:auto; margin-top:10px; }
+@media(max-width:480px){
+  h1 { font-size:1.3em; }
+  th, td { font-size:12px; padding:6px; }
+  input, select, button { font-size:14px; padding:10px; }
+}
+</style>
+</head>
+<body>
+
+<h1>DPDC Mobile Dashboard Offline</h1>
+
+<div class="card">
+  <label>Date: <input type="date" id="date"></label>
+  <label>Amount (৳): <input type="number" id="amount"></label>
+  <label>Type:
+    <select id="type">
+      <option value="Electricity">Electricity</option>
+      <option value="Air/WiFi">Air/WiFi</option>
+      <option value="Other">Other</option>
+    </select>
+  </label>
+  <label>Utility / Note:
+    <select id="note">
+      <option value="Electricity">Electricity</option>
+      <option value="WiFi">WiFi</option>
+    </select>
+  </label>
+  <button onclick="addCustomUtility()">Add Utility</button>
+  <button onclick="deleteCustomUtility()">Delete Utility</button>
+  <label>Payment Method:
+    <select id="payment">
+      <option value="Bkash">Bkash</option>
+      <option value="Rocket">Rocket</option>
+      <option value="Nagad">Nagad</option>
+      <option value="Other">Other</option>
+    </select>
+  </label>
+  <button onclick="addRecharge()">Add Recharge</button>
+</div>
+
+<div class="card">
+  <div class="summary-card electricity" id="electricityTotal">Electricity: ৳0</div>
+  <div class="summary-card airwifi" id="airTotal">Air/WiFi: ৳0</div>
+  <div class="summary-card other" id="otherTotal">Other: ৳0</div>
+  <div class="summary-card overall" id="overallTotal">Overall: ৳0</div>
+</div>
+
+<div class="card">
+  <label>Filter Year:
+    <select id="filterYear" onchange="renderTable(); updateTotals();">
+      <option value="All">All</option>
+    </select>
+  </label>
+  <label>Filter Month:
+    <input type="month" id="filterMonth" onchange="renderTable(); updateTotals();">
+  </label>
+  <label>Filter Type:
+    <select id="filterType" onchange="renderTable(); updateTotals();">
+      <option value="All">All</option>
+      <option value="Electricity">Electricity</option>
+      <option value="Air/WiFi">Air/WiFi</option>
+      <option value="Other">Other</option>
+    </select>
+  </label>
+  <label>Filter Payment:
+    <select id="filterPayment" onchange="renderTable(); updateTotals();">
+      <option value="All">All</option>
+      <option value="Bkash">Bkash</option>
+      <option value="Rocket">Rocket</option>
+      <option value="Nagad">Nagad</option>
+      <option value="Other">Other</option>
+    </select>
+  </label>
+  <label>Filter Utility:
+    <select id="filterUtility" onchange="renderTable(); updateTotals();">
+      <option value="All">All</option>
+      <option value="Electricity">Electricity</option>
+      <option value="WiFi">WiFi</option>
+    </select>
+  </label>
+</div>
+
+<div style="overflow-x:auto;">
+<table id="rechargeTable">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Amount (৳)</th>
+      <th>Type</th>
+      <th>Utility</th>
+      <th>Payment</th>
+      <th>Month</th>
+      <th>Year</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+</div>
+
+<div class="card">
+  <canvas id="monthlyChart"></canvas>
+</div>
+
+<script>
+// ==== Offline Chart.js ====
+class SimpleChart{
+    constructor(ctx,data){
+        this.ctx=ctx;
+        this.data=data;
+        this.draw();
+    }
+    draw(){
+        const ctx=this.ctx;
+        ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+        const w=ctx.canvas.width,h=ctx.canvas.height;
+        const max=Math.max(...this.data.map(d=>d.amount))*1.2||100;
+        const barWidth=w/this.data.length*0.6;
+        this.data.forEach((d,i)=>{
+            const x=i*w/this.data.length + (w/this.data.length-barWidth)/2;
+            const y=h - (d.amount/max)*h;
+            ctx.fillStyle=d.color;
+            ctx.fillRect(x,y,barWidth,(d.amount/max)*h);
+            ctx.fillStyle="#000"; ctx.font="12px Arial";
+            ctx.fillText(d.label,x, h-5);
+        });
+    }
+    update(newData){ this.data=newData; this.draw(); }
+}
+let chart;
+
+// ==== Data & Functions ====
+let data = JSON.parse(localStorage.getItem('rechargeData') || '[]');
+
+function saveData(){ localStorage.setItem('rechargeData', JSON.stringify(data)); }
+
+function addRecharge(){
+    const date=document.getElementById('date').value;
+    const amount=parseFloat(document.getElementById('amount').value);
+    const type=document.getElementById('type').value;
+    const note=document.getElementById('note').value;
+    const payment=document.getElementById('payment').value;
+    if(!date || !amount){ alert('Date and Amount required'); return; }
+    const dt=new Date(date);
+    const month=dt.toLocaleString('default',{month:'short'});
+    const year=dt.getFullYear();
+    data.push({date, amount, type, note, payment, month, year});
+    saveData(); renderTable(); updateTotals(); updateChart();
+    document.getElementById('date').value=''; document.getElementById('amount').value='';
+    document.getElementById('note').value='Electricity'; document.getElementById('payment').value='Bkash';
+    updateYearFilter();
+}
+
+function updateYearFilter(){
+    const select=document.getElementById('filterYear');
+    const years=[...new Set(data.map(d=>d.year))];
+    select.innerHTML='<option value="All">All</option>';
+    years.forEach(y=>{
+        const opt=document.createElement('option'); opt.value=y; opt.text=y; select.appendChild(opt);
+    });
+}
+
+function renderTable(){
+    const tbody=document.querySelector('#rechargeTable tbody');
+    tbody.innerHTML='';
+    const filterYear=document.getElementById('filterYear').value;
+    const filterMonth=document.getElementById('filterMonth').value;
+    const filterType=document.getElementById('filterType').value;
+    const filterPayment=document.getElementById('filterPayment').value;
+    const filterUtility=document.getElementById('filterUtility').value;
+
+    data.forEach((item,index)=>{
+        if((filterYear!=='All' && item.year!=filterYear) ||
+           (filterMonth && item.date.substring(0,7)!==filterMonth) ||
+           (filterType!=='All' && item.type!==filterType) ||
+           (filterPayment!=='All' && item.payment!==filterPayment) ||
+           (filterUtility!=='All' && item.note!==filterUtility)) return;
+
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+            <td class="editable" onclick="editField(${index},'date')">${item.date}</td>
+            <td class="editable" onclick="editField(${index},'amount')">${item.amount}</td>
+            <td class="editable" onclick="editField(${index},'type')">${item.type}</td>
+            <td class="editable" onclick="editField(${index},'note')">${item.note}</td>
+            <td class="editable" onclick="editField(${index},'payment')">${item.payment}</td>
+            <td>${item.month}</td>
+            <td>${item.year}</td>
+            <td><button class="deleteBtn" onclick="deleteRow(${index})">Delete</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function editField(index,field){
+    let newVal=prompt(`Edit ${field}:`,data[index][field]);
+    if(newVal===null) return;
+    if(field==='amount') newVal=parseFloat(newVal);
+    if(field==='date') {
+        const dt=new Date(newVal);
+        data[index].month=dt.toLocaleString('default',{month:'short'});
+        data[index].year=dt.getFullYear();
+    }
+    data[index][field]=newVal;
+    saveData(); renderTable(); updateTotals(); updateChart(); updateYearFilter();
+}
+
+function deleteRow(index){
+    if(!confirm('Are you sure to delete this entry?')) return;
+    data.splice(index,1);
+    saveData(); renderTable(); updateTotals(); updateChart(); updateYearFilter();
+}
+
+function updateTotals(){
+    let totals={Electricity:0, "Air/WiFi":0, Other:0, Overall:0};
+    const filterYear=document.getElementById('filterYear').value;
+    const filterMonth=document.getElementById('filterMonth').value;
+    const filterType=document.getElementById('filterType').value;
+    const filterPayment=document.getElementById('filterPayment').value;
+    const filterUtility=document.getElementById('filterUtility').value;
+
+    data.forEach(d=>{
+        if((filterYear!=='All' && d.year!=filterYear) ||
+           (filterMonth && d.date.substring(0,7)!==filterMonth) ||
+           (filterType!=='All' && d.type!==filterType) ||
+           (filterPayment!=='All' && d.payment!==filterPayment) ||
+           (filterUtility!=='All' && d.note!==filterUtility)) return;
+
+        totals.Overall+=d.amount;
+        if(d.type==='Electricity') totals.Electricity+=d.amount;
+        else if(d.type==='Air/WiFi') totals["Air/WiFi"]+=d.amount;
+        else totals.Other+=d.amount;
+    });
+    document.getElementById('electricityTotal').innerText=`Electricity: ৳${totals.Electricity}`;
+    document.getElementById('airTotal').innerText=`Air/WiFi: ৳${totals["Air/WiFi"]}`;
+    document.getElementById('otherTotal').innerText=`Other: ৳${totals.Other}`;
+    document.getElementById('overallTotal').innerText=`Overall: ৳${totals.Overall}`;
+}
+
+function updateChart(){
+    const filterYear=document.getElementById('filterYear').value;
+    const filterMonth=document.getElementById('filterMonth').value;
+    const filterType=document.getElementById('filterType').value;
+    const filterPayment=document.getElementById('filterPayment').value;
+    const filterUtility=document.getElementById('filterUtility').value;
+
+    const monthMap={};
+    data.forEach(item=>{
+        if((filterYear!=='All' && item.year!=filterYear) ||
+           (filterMonth && item.date.substring(0,7)!==filterMonth) ||
+           (filterType!=='All' && item.type!==filterType) ||
+           (filterPayment!=='All' && item.payment!==filterPayment) ||
+           (filterUtility!=='All' && item.note!==filterUtility)) return;
+
+        monthMap[item.month]=(monthMap[item.month]||0)+item.amount;
+    });
+    const chartData=Object.keys(monthMap).map((label,i)=>({
+        label,
+        amount:monthMap[label],
+        color:`hsl(${i*50%360},70%,60%)`
+    }));
+    const ctx=document.getElementById('monthlyChart').getContext('2d');
+    if(!chart) chart=new SimpleChart(ctx,chartData);
+    else chart.update(chartData);
+}
+
+// ==== Custom Utility ====
+function addCustomUtility(){
+    let name=prompt("Enter new utility name:");
+    if(!name) return;
+    const select=document.getElementById('note');
+    for(let i=0;i<select.options.length;i++){ if(select.options[i].value.toLowerCase()===name.toLowerCase()){ alert('Utility already exists'); return; } }
+    const option=document.createElement('option'); option.value=name; option.text=name; select.appendChild(option);
+}
+function deleteCustomUtility(){
+    let name=prompt("Enter utility name to delete:");
+    if(!name) return;
+    const select=document.getElementById('note');
+    for(let i=0;i<select.options.length;i++){ if(select.options[i].value.toLowerCase()===name.toLowerCase()){ select.remove(i); alert(name+" deleted"); return; } }
+    alert("Utility not found");
+}
+
+updateYearFilter();
+renderTable(); updateTotals(); updateChart();
+</script>
+</body>
+</html>
